@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Claramente · Realidade Aumentada</title>
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+    /* O MindAR injeta o <video> da camera no body. Garantimos que ele preencha
+       a tela e fique atras do canvas 3D — sem isso a tela pode ficar preta. */
+    body > video {
+      position: fixed !important; top: 0 !important; left: 0 !important;
+      width: 100% !important; height: 100% !important;
+      object-fit: cover !important; z-index: 0 !important;
+    }
+    a-scene { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+
+    .badge {
+      position: fixed; top: 12px; left: 12px; right: 12px; z-index: 10;
+      text-align: center; background: rgba(6, 42, 64, .82); color: #fff;
+      border-radius: 999px; padding: 10px 16px; font-size: 12.5px; font-weight: 600;
+    }
+    .badge.found { background: rgba(70, 194, 110, .92); }
+    .panel {
+      position: fixed; inset: auto 12px 12px 12px; z-index: 10;
+      background: rgba(6, 42, 64, .82); color: #fff; border-radius: 18px; padding: 14px 16px;
+    }
+    .panel h1 { margin: 0; font-size: 15px; font-weight: 700; }
+    .panel p { margin: 4px 0 0; font-size: 12.5px; line-height: 1.45; color: #D9EEF6; }
+    .fatal {
+      position: fixed; inset: 0; z-index: 30; display: none; flex-direction: column; gap: 10px;
+      align-items: center; justify-content: center; padding: 32px; text-align: center;
+      background: #FFF9EF; color: #0B3B57;
+    }
+    .fatal h2 { margin: 0; font-size: 19px; }
+    .fatal p { margin: 0; font-size: 14px; line-height: 1.5; color: #5B7182; max-width: 340px; }
+    .fatal code { font-size: 12px; background: #EEF3F6; padding: 2px 6px; border-radius: 6px;
+      word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div class="badge" id="badge">Iniciando camera...</div>
+
+  <div class="panel">
+    <h1 id="title">Carregando...</h1>
+    <p id="desc"></p>
+  </div>
+
+  <div class="fatal" id="fatal">
+    <h2 id="fatalTitle">Nao foi possivel abrir a camera</h2>
+    <p id="fatalText"></p>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const modelId = params.get('modelo') || 'solar';
+
+    // Por padrao usa o alvo proprio (targets.mind, compilado a partir de
+    // alvo-claramente.png). ?alvo=exemplo volta para o alvo de demonstracao
+    // do MindAR, util para comparar se algo parar de funcionar.
+    const targetSrc = params.get('alvo') === 'exemplo'
+      ? 'https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/card.mind'
+      : './targets.mind';
+
+    function orbit(color, radius, distance, duration, label) {
+      return [
+        '<a-entity animation="property: rotation; to: 0 360 0; loop: true; dur: ' + duration + '; easing: linear">',
+        '  <a-entity position="' + distance + ' 0 0">',
+        '    <a-sphere radius="' + radius + '" color="' + color + '"></a-sphere>',
+        '    <a-text value="' + label + '" align="center" color="#FFFFFF" width="1.5" position="0 ' + (radius + 0.07) + ' 0"></a-text>',
+        '  </a-entity>',
+        '</a-entity>',
+      ].join('');
+    }
+
+    function bond(angleDeg) {
+      return [
+        '<a-entity rotation="0 0 ' + angleDeg + '">',
+        '  <a-cylinder position="0 0.14 0" radius="0.022" height="0.28" color="#9AA7AF"></a-cylinder>',
+        '  <a-entity position="0 0.28 0">',
+        '    <a-sphere radius="0.07" color="#F2F5F7"></a-sphere>',
+        '    <a-text value="H" align="center" color="#0B3B57" width="1.8" position="0 0 0.08"></a-text>',
+        '  </a-entity>',
+        '</a-entity>',
+      ].join('');
+    }
+
+    const MODELS = {
+      solar: {
+        title: 'Sistema Solar',
+        desc: 'Venus, Terra e Marte orbitam o Sol em velocidades diferentes: quanto mais longe, mais lenta a orbita.',
+        build: function () {
+          return [
+            '<a-sphere radius="0.11" color="#FFB020" material="shader: flat"></a-sphere>',
+            '<a-text value="Sol" align="center" color="#FFFFFF" width="2" position="0 0.18 0"></a-text>',
+            orbit('#E8C37A', 0.045, 0.26, 5200, 'Venus'),
+            orbit('#2FB6D9', 0.055, 0.39, 8200, 'Terra'),
+            orbit('#D96B2F', 0.048, 0.52, 12500, 'Marte'),
+          ].join('');
+        },
+      },
+      agua: {
+        title: 'Molecula de agua (H2O)',
+        desc: 'Um oxigenio ligado a dois hidrogenios, com o angulo real de 104,5 graus entre eles.',
+        build: function () {
+          return [
+            '<a-entity animation="property: rotation; to: 0 360 0; loop: true; dur: 12000; easing: linear">',
+            '  <a-sphere radius="0.13" color="#E0453B"></a-sphere>',
+            '  <a-text value="O" align="center" color="#FFFFFF" width="2.4" position="0 0 0.14"></a-text>',
+            bond(52.25),
+            bond(-52.25),
+            '</a-entity>',
+          ].join('');
+        },
+      },
+      solidos: {
+        title: 'Solidos geometricos',
+        desc: 'Cubo, esfera e piramide lado a lado: compare faces, vertices e arestas.',
+        build: function () {
+          return [
+            '<a-entity animation="property: rotation; to: 0 360 0; loop: true; dur: 13000; easing: linear">',
+            '  <a-box position="-0.32 0.1 0" depth="0.2" height="0.2" width="0.2" color="#7C5CFF"></a-box>',
+            '  <a-text value="Cubo" align="center" color="#FFFFFF" width="1.6" position="-0.32 0.28 0"></a-text>',
+            '  <a-sphere position="0 0.1 0" radius="0.115" color="#46C26E"></a-sphere>',
+            '  <a-text value="Esfera" align="center" color="#FFFFFF" width="1.6" position="0 0.28 0"></a-text>',
+            '  <a-cone position="0.32 0.1 0" radius-bottom="0.13" radius-top="0" height="0.24" segments-radial="4" color="#FF9224"></a-cone>',
+            '  <a-text value="Piramide" align="center" color="#FFFFFF" width="1.6" position="0.32 0.28 0"></a-text>',
+            '</a-entity>',
+          ].join('');
+        },
+      },
+    };
+
+    const model = MODELS[modelId] || MODELS.solar;
+    document.getElementById('title').textContent = model.title;
+    document.getElementById('desc').textContent = model.desc;
+
+    function showFatal(title, text) {
+      document.getElementById('fatalTitle').textContent = title;
+      document.getElementById('fatalText').innerHTML = text;
+      document.getElementById('fatal').style.display = 'flex';
+    }
+
+    // getUserMedia so existe em contexto seguro (HTTPS ou localhost).
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showFatal(
+        'Camera indisponivel',
+        window.isSecureContext
+          ? 'Este navegador nao expoe a camera para paginas web.'
+          : 'A pagina precisa ser aberta em <b>HTTPS</b> para acessar a camera.<br><br>Endereco atual:<br><code>' + location.href + '</code>'
+      );
+    } else {
+      // A cena e criada com os atributos do MindAR ja no lugar, ANTES do A-Frame
+      // inicializar (o script roda durante o parse do body). Configurar via
+      // setAttribute depois que a cena ja subiu quebra a injecao do video.
+      const scene = document.createElement('a-scene');
+      scene.setAttribute('mindar-image',
+        'imageTargetSrc: ' + targetSrc + '; autoStart: true; uiLoading: no; uiError: no; uiScanning: no');
+      scene.setAttribute('color-space', 'sRGB');
+      scene.setAttribute('renderer', 'colorManagement: true, physicallyCorrectLights');
+      scene.setAttribute('vr-mode-ui', 'enabled: false');
+      scene.setAttribute('device-orientation-permission-ui', 'enabled: false');
+
+      scene.innerHTML =
+        '<a-camera position="0 0 0" look-controls="enabled: false"></a-camera>' +
+        '<a-entity id="anchor" mindar-image-target="targetIndex: 0">' + model.build() + '</a-entity>';
+
+      document.body.appendChild(scene);
+
+      const badge = document.getElementById('badge');
+
+      scene.addEventListener('arReady', function () {
+        badge.textContent = 'Procurando o alvo...';
+      });
+
+      scene.addEventListener('arError', function (event) {
+        showFatal(
+          'Erro ao iniciar a realidade aumentada',
+          'O MindAR nao conseguiu iniciar. Detalhe: <code>' +
+            (event && event.detail ? JSON.stringify(event.detail) : 'desconhecido') + '</code>'
+        );
+      });
+
+      scene.addEventListener('renderstart', function () {
+        const anchor = document.getElementById('anchor');
+        anchor.addEventListener('targetFound', function () {
+          badge.textContent = model.title + ' - alvo encontrado';
+          badge.classList.add('found');
+        });
+        anchor.addEventListener('targetLost', function () {
+          badge.textContent = 'Procurando o alvo...';
+          badge.classList.remove('found');
+        });
+      });
+
+      // Se em 12s nenhum video aparecer no DOM, a camera nao subiu: avisa em vez
+      // de deixar a tela preta sem explicacao.
+      setTimeout(function () {
+        const video = document.querySelector('body > video');
+        if (!video || !video.srcObject) {
+          showFatal(
+            'A camera nao iniciou',
+            'A pagina carregou, mas o video da camera nao apareceu.<br><br>' +
+            'Tente: fechar outros apps que usem a camera, recarregar a pagina, ' +
+            'ou abrir em outro navegador.'
+          );
+        }
+      }, 12000);
+    }
+  </script>
+</body>
+</html>
